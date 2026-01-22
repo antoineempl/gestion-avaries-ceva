@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion Avaries CEVA</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+        h1 { color: #003d7a; margin-bottom: 20px; }
+        
+        .filters { background: white; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        .filters input, .filters select { 
+            padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; 
+        }
+        .filters input { width: 300px; }
+        .filters select { min-width: 200px; }
+        .filters label { margin-right: 5px; font-weight: bold; }
+        
+        .btn { padding: 8px 15px; cursor: pointer; border: none; border-radius: 3px; margin-right: 5px; }
+        .btn-add { background: #28a745; color: white; }
+        .btn-edit { background: #ffc107; color: black; font-size: 12px; }
+        .btn-delete { background: #dc3545; color: white; font-size: 12px; }
+        .btn-delete-selected { background: #dc3545; color: white; font-weight: bold; }
+        .btn-save { background: #003d7a; color: white; }
+        .btn-export { background: #17a2b8; color: white; }
+        .btn-import { background: #6f42c1; color: white; }
+        .btn-sort { background: #6c757d; color: white; }
+        
+        table { width: 100%; background: white; border-collapse: collapse; table-layout: fixed; }
+        th { background: #003d7a; color: white; padding: 12px; text-align: left; cursor: pointer; }
+        th:hover { background: #002a5a; }
+        td { padding: 10px; border-bottom: 1px solid #ddd; font-size: 13px; word-wrap: break-word; }
+        tr:hover { background: #f9f9f9; }
+        tr.selected { background: #fff3cd; }
+        
+        /* ✅ SURBRILLANCE VERTE pour VIN réparé */
+        tr.termine { background: #d4edda !important; }
+        tr.termine:hover { background: #c3e6cb !important; }
+        tr.termine.selected { background: #b8dac4 !important; }
+        
+        /* Case à cocher */
+        .checkbox-cell { width: 40px !important; text-align: center; }
+        input[type="checkbox"] { cursor: pointer; transform: scale(1.2); }
+        
+        /* Largeurs des colonnes */
+        th:nth-child(2), td:nth-child(2) { width: 7%; }
+        th:nth-child(3), td:nth-child(3) { width: 10%; }
+        th:nth-child(4), td:nth-child(4) { width: 6%; }
+        th:nth-child(5), td:nth-child(5) { width: 7%; }
+        th:nth-child(6), td:nth-child(6) { width: 16%; }
+        th:nth-child(7), td:nth-child(7) { width: 12%; }
+        th:nth-child(8), td:nth-child(8) { width: 22%; }
+        th:nth-child(9), td:nth-child(9) { width: 8%; }
+        
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 5% auto; padding: 30px; width: 60%; border-radius: 8px; max-height: 80vh; overflow-y: auto; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; color: #aaa; }
+        .close:hover { color: black; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { 
+            width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; 
+        }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        
+        /* Pagination */
+        .pagination-container { 
+            background: white; 
+            padding: 15px; 
+            margin-top: 10px; 
+            border-radius: 5px; 
+            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pagination-info { font-weight: bold; color: #003d7a; }
+        .pagination-buttons button {
+            padding: 8px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            border: 1px solid #003d7a;
+            background: white;
+            color: #003d7a;
+            border-radius: 3px;
+        }
+        .pagination-buttons button:hover:not(:disabled) { background: #003d7a; color: white; }
+        .pagination-buttons button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination-buttons button.active { background: #003d7a; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>📋 Gestion Avaries CEVA Logistics</h1>
+
+    <div class="filters">
+        <input type="text" id="searchVIN" placeholder="🔍 Rechercher par VIN..." oninput="filterTable()">
+        
+        <select id="filterStatut" onchange="filterTable()">
+            <option value="">📊 Tous les statuts</option>
+            <option value="DOSSIER _ Construction du dossier pour le SAV">DOSSIER _ Construction</option>
+            <option value="DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)">DOSSIER _ Expertise</option>
+            <option value="DOSSIER _ En litige SEVATAS">DOSSIER _ Litige</option>
+            <option value="DOSSIER _ Attente accord Sevatas">DOSSIER _ Attente accord</option>
+            <option value="TRANSPORT _transfert en attente > Garage réparateur">TRANSPORT _ Transfert</option>
+            <option value="PIECE _ Pièce commandée > attente de reception">PIECE _ Commandée</option>
+            <option value="REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER">REPARATION _ DENTMASTER</option>
+            <option value="REPARATION _ En cours au garage réparateur >Ss date de fin de realignement">REPARATION _ Garage</option>
+            <option value="REFORME B_ attente instructions RLT et/ou SEVATAS">REFORME B _ Attente</option>
+            <option value="TERMINE _ En att de rapatriement sur centre">TERMINE _ Rapatriement</option>
+            <option value="TERMINE _ VIN réparé & blocage levé">✅ TERMINE _ Réparé</option>
+            <option value="REFUS SEVATAS">REFUS SEVATAS</option>
+        </select>
+        
+        <select id="filterReparateur" onchange="filterTable()">
+            <option value="">🔧 Tous les réparateurs</option>
+            <option value="RRG RENAULT">RRG RENAULT</option>
+            <option value="DENTMASTER">DENTMASTER</option>
+            <option value="AUTRE">AUTRE</option>
+        </select>
+        
+        <select id="filterResponsabilite" onchange="filterTable()">
+            <option value="">👤 Toutes les responsabilités</option>
+            <option value="CEVA">CEVA</option>
+            <option value="EMPL">EMPL</option>
+            <option value="NAVIRE">NAVIRE</option>
+            <option value="AUTRE">AUTRE</option>
+        </select>
+        
+        <label>
+            <input type="checkbox" id="filterAnneeCours" onchange="filterTable()"> 
+            📅 Année en cours uniquement
+        </label>
+        
+        <br><br>
+        
+        <button class="btn btn-add" onclick="openModal()">➕ Ajouter VIN</button>
+        <button class="btn btn-delete-selected" id="btnDeleteSelected" onclick="deleteSelected()" style="display:none;">🗑️ Supprimer la sélection (<span id="selectedCount">0</span>)</button>
+        <button class="btn btn-export" onclick="exportToExcel()">📥 Exporter Excel</button>
+        <button class="btn btn-import" onclick="document.getElementById('importFile').click()">📤 Importer Excel</button>
+        <button class="btn btn-sort" onclick="toggleDateSort()">🔄 Tri Date</button>
+        <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="importFromExcel(event)">
+    </div>
+
+    <div style="background: white; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
+        <strong>📊 Total lignes :</strong> <span id="totalLignes">0</span> | 
+        <strong>🔍 Résultats affichés :</strong> <span id="resultatsAffiches">0</span>
+    </div>
+
+    <table id="dataTable">
+        <thead>
+            <tr>
+                <th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                <th onclick="sortTable('date')">📅 Date ↕️</th>
+                <th onclick="sortTable('vin')">🚗 VIN ↕️</th>
+                <th onclick="sortTable('modele')">🏷️ Modèle ↕️</th>
+                <th onclick="sortTable('responsabilite')">👤 Responsabilité ↕️</th>
+                <th onclick="sortTable('statut')">📊 Statut ↕️</th>
+                <th onclick="sortTable('reparateur')">🔧 Réparateur ↕️</th>
+                <th onclick="sortTable('commentaire')">💬 Commentaire ↕️</th>
+                <th>⚙️ Actions</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="pagination-container">
+        <div class="pagination-info">
+            Page <span id="currentPageDisplay">1</span> sur <span id="totalPagesDisplay">1</span>
+        </div>
+        <div class="pagination-buttons">
+            <button onclick="goToPage(1)" id="btnFirst">⏮️ Première</button>
+            <button onclick="previousPage()" id="btnPrev">⬅️ Précédente</button>
+            <span id="pageNumbers"></span>
+            <button onclick="nextPage()" id="btnNext">Suivante ➡️</button>
+            <button onclick="goToPage(totalPages)" id="btnLast">Dernière ⏭️</button>
+        </div>
+        <div>
+            <select id="itemsPerPage" onchange="changeItemsPerPage()">
+                <option value="50">50 par page</option>
+                <option value="100" selected>100 par page</option>
+                <option value="200">200 par page</option>
+                <option value="500">500 par page</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">➕ Ajouter un VIN</h2>
+            <form id="vinForm" onsubmit="saveData(event)">
+                <input type="hidden" id="editIndex">
+                
+                <div class="form-group">
+                    <label>📅 Date *</label>
+                    <input type="date" id="date" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>🚗 VIN *</label>
+                    <input type="text" id="vin" placeholder="Ex: VF1RFD00268123456" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>🏷️ Modèle *</label>
+                    <input type="text" id="modele" placeholder="Ex: CLIO, CAPTUR..." required>
+                </div>
+                
+                <div class="form-group">
+                    <label>👤 Responsabilité *</label>
+                    <select id="responsabilite" required>
+                        <option value="">Sélectionner...</option>
+                        <option value="CEVA">CEVA</option>
+                        <option value="EMPL">EMPL</option>
+                        <option value="NAVIRE">NAVIRE</option>
+                        <option value="AUTRE">AUTRE</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>📊 Statut *</label>
+                    <select id="statut" required>
+                        <option value="">Sélectionner...</option>
+                        <option value="DOSSIER _ Construction du dossier pour le SAV">DOSSIER _ Construction du dossier pour le SAV</option>
+                        <option value="DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)">DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)</option>
+                        <option value="DOSSIER _ En litige SEVATAS">DOSSIER _ En litige SEVATAS</option>
+                        <option value="DOSSIER _ Attente accord Sevatas">DOSSIER _ Attente accord Sevatas</option>
+                        <option value="TRANSPORT _transfert en attente > Garage réparateur">TRANSPORT _transfert en attente > Garage réparateur</option>
+                        <option value="PIECE _ Pièce commandée > attente de reception">PIECE _ Pièce commandée > attente de reception</option>
+                        <option value="REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER">REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER</option>
+                        <option value="REPARATION _ En cours au garage réparateur >Ss date de fin de realignement">REPARATION _ En cours au garage réparateur >Ss date de fin de realignement</option>
+                        <option value="REFORME B_ attente instructions RLT et/ou SEVATAS">REFORME B_ attente instructions RLT et/ou SEVATAS</option>
+                        <option value="TERMINE _ En att de rapatriement sur centre">TERMINE _ En att de rapatriement sur centre</option>
+                        <option value="TERMINE _ VIN réparé & blocage levé">TERMINE _ VIN réparé & blocage levé</option>
+                        <option value="REFUS SEVATAS">REFUS SEVATAS</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>🔧 Réparateur *</label>
+                    <select id="reparateur" required>
+                        <option value="">Sélectionner...</option>
+                        <option value="RRG RENAULT">RRG RENAULT</option>
+                        <option value="DENTMASTER">DENTMASTER</option>
+                        <option value="AUTRE">AUTRE</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>💬 Commentaire</label>
+                    <textarea id="commentaire" placeholder="Informations complémentaires..."></textarea>
+                </div>
+                
+                <button type="submit" class="btn btn-save">💾 Enregistrer</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let data = [];
+        let filteredData = [];
+        let sortOrder = { column: 'date', ascending: false };
+        
+        // 📄 PAGINATION
+        let currentPage = 1;
+        let itemsPerPage = 100;
+        let totalPages = 1;
+
+        // Charger données
+        function loadFromStorage() {
+            const saved = localStorage.getItem('cevaAvaries');
+            if (saved) {
+                data = JSON.parse(saved);
+            }
+            filterTable();
+        }
+
+        // Sauvegarder données
+        function saveToStorage() {
+            localStorage.setItem('cevaAvaries', JSON.stringify(data));
+        }
+
+        // Afficher tableau avec PAGINATION
+        function displayTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            // Calculer pagination
+            totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, filteredData.length);
+            const pageData = filteredData.slice(startIndex, endIndex);
+            
+            // Afficher les données de la page
+            pageData.forEach((row, index) => {
+                const globalIndex = startIndex + index;
+                const tr = document.createElement('tr');
+                
+                // ✅ Classe CSS pour surbrillance verte
+                if (row.statut === 'TERMINE _ VIN réparé & blocage levé') {
+                    tr.classList.add('termine');
+                }
+                
+                tr.innerHTML = `
+                    <td class="checkbox-cell"><input type="checkbox" class="row-checkbox" data-index="${globalIndex}" onchange="updateSelectAllState()"></td>
+                    <td>${row.date}</td>
+                    <td>${row.vin}</td>
+                    <td>${row.modele}</td>
+                    <td>${row.responsabilite}</td>
+                    <td>${row.statut}</td>
+                    <td>${row.reparateur}</td>
+                    <td>${row.commentaire}</td>
+                    <td>
+                        <button class="btn btn-edit" onclick="editRow(${globalIndex})">✏️</button>
+                        <button class="btn btn-delete" onclick="deleteRow(${globalIndex})">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            // Mettre à jour compteurs
+            document.getElementById('totalLignes').textContent = data.length;
+            document.getElementById('resultatsAffiches').textContent = filteredData.length;
+            
+            updatePaginationControls();
+        }
+
+        // Mettre à jour contrôles pagination
+        function updatePaginationControls() {
+            document.getElementById('currentPageDisplay').textContent = currentPage;
+            document.getElementById('totalPagesDisplay').textContent = totalPages;
+            
+            // Boutons
+            document.getElementById('btnFirst').disabled = currentPage === 1;
+            document.getElementById('btnPrev').disabled = currentPage === 1;
+            document.getElementById('btnNext').disabled = currentPage === totalPages;
+            document.getElementById('btnLast').disabled = currentPage === totalPages;
+            
+            // Numéros de pages
+            const pageNumbers = document.getElementById('pageNumbers');
+            pageNumbers.innerHTML = '';
+            
+            const maxButtons = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+            let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            
+            if (endPage - startPage < maxButtons - 1) {
+                startPage = Math.max(1, endPage - maxButtons + 1);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.onclick = () => goToPage(i);
+                if (i === currentPage) btn.classList.add('active');
+                pageNumbers.appendChild(btn);
+            }
+        }
+
+        // Navigation pagination
+        function goToPage(page) {
+            currentPage = page;
+            displayTable();
+        }
+
+        function nextPage() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                displayTable();
+            }
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                displayTable();
+            }
+        }
+
+        function changeItemsPerPage() {
+            itemsPerPage = parseInt(document.getElementById('itemsPerPage').value);
+            currentPage = 1;
+            displayTable();
+        }
+
+        // Filtrer tableau
+        function filterTable() {
+            const searchVIN = document.getElementById('searchVIN').value.toUpperCase();
+            const filterStatut = document.getElementById('filterStatut').value;
+            const filterReparateur = document.getElementById('filterReparateur').value;
+            const filterResponsabilite = document.getElementById('filterResponsabilite').value;
+            const filterAnneeCours = document.getElementById('filterAnneeCours').checked;
+            
+            const anneeEnCours = new Date().getFullYear();
+            
+            filteredData = data.filter(row => {
+                const matchVIN = row.vin.toUpperCase().includes(searchVIN);
+                const matchStatut = !filterStatut || row.statut === filterStatut;
+                const matchReparateur = !filterReparateur || row.reparateur === filterReparateur;
+                const matchResponsabilite = !filterResponsabilite || row.responsabilite === filterResponsabilite;
+                
+                let matchAnnee = true;
+                if (filterAnneeCours && row.date) {
+                    const rowYear = new Date(row.date).getFullYear();
+                    matchAnnee = rowYear === anneeEnCours;
+                }
+                
+                return matchVIN && matchStatut && matchReparateur && matchResponsabilite && matchAnnee;
+            });
+            
+            currentPage = 1; // Retour à la première page
+            displayTable();
+        }
+
+        // Trier tableau
+        function sortTable(column) {
+            if (sortOrder.column === column) {
+                sortOrder.ascending = !sortOrder.ascending;
+            } else {
+                sortOrder.column = column;
+                sortOrder.ascending = true;
+            }
+            
+            filteredData.sort((a, b) => {
+                let valA = a[column] || '';
+                let valB = b[column] || '';
+                
+                if (column === 'date') {
+                    valA = new Date(valA);
+                    valB = new Date(valB);
+                }
+                
+                if (valA < valB) return sortOrder.ascending ? -1 : 1;
+                if (valA > valB) return sortOrder.ascending ? 1 : -1;
+                return 0;
+            });
+            
+            displayTable();
+        }
+
+        // Toggle tri date
+        function toggleDateSort() {
+            sortTable('date');
+        }
+
+        // Sélection multiple
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll').checked;
+            document.querySelectorAll('.row-checkbox').forEach(cb => {
+                cb.checked = selectAll;
+            });
+            updateSelectAllState();
+        }
+
+        function updateSelectAllState() {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            const checked = document.querySelectorAll('.row-checkbox:checked');
+            
+            document.getElementById('selectAll').checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+            document.getElementById('selectAll').indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+            
+            document.getElementById('selectedCount').textContent = checked.length;
+            document.getElementById('btnDeleteSelected').style.display = checked.length > 0 ? 'inline-block' : 'none';
+            
+            // Ajouter classe selected
+            checkboxes.forEach(cb => {
+                const row = cb.closest('tr');
+                if (cb.checked) {
+                    row.classList.add('selected');
+                } else {
+                    row.classList.remove('selected');
+                }
+            });
+        }
+
+        // Supprimer sélection
+        function deleteSelected() {
+            const checked = document.querySelectorAll('.row-checkbox:checked');
+            if (checked.length === 0) return;
+            
+            if (!confirm(`Supprimer ${checked.length} ligne(s) ?`)) return;
+            
+            const indices = Array.from(checked).map(cb => parseInt(cb.dataset.index)).sort((a, b) => b - a);
+            
+            indices.forEach(index => {
+                const originalIndex = data.findIndex(row => row === filteredData[index]);
+                if (originalIndex !== -1) {
+                    data.splice(originalIndex, 1);
+                }
+            });
+            
+            saveToStorage();
+            document.getElementById('selectAll').checked = false;
+            filterTable();
+        }
+
+        // Modal
+        function openModal(index = null) {
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('vinForm').reset();
+            
+            if (index !== null) {
+                document.getElementById('modalTitle').textContent = '✏️ Modifier VIN';
+                document.getElementById('editIndex').value = index;
+                
+                const row = filteredData[index];
+                document.getElementById('date').value = row.date;
+                document.getElementById('vin').value = row.vin;
+                document.getElementById('modele').value = row.modele;
+                document.getElementById('responsabilite').value = row.responsabilite;
+                document.getElementById('statut').value = row.statut;
+                document.getElementById('reparateur').value = row.reparateur;
+                document.getElementById('commentaire').value = row.commentaire;
+            } else {
+                document.getElementById('modalTitle').textContent = '➕ Ajouter VIN';
+                document.getElementById('editIndex').value = '';
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Sauvegarder données
+        function saveData(event) {
+            event.preventDefault();
+            
+            const newRow = {
+                date: document.getElementById('date').value,
+                vin: document.getElementById('vin').value.toUpperCase(),
+                modele: document.getElementById('modele').value.toUpperCase(),
+                responsabilite: document.getElementById('responsabilite').value,
+                statut: document.getElementById('statut').value,
+                reparateur: document.getElementById('reparateur').value,
+                commentaire: document.getElementById('commentaire').value
+            };
+            
+            const editIndex = document.getElementById('editIndex').value;
+            
+            if (editIndex !== '') {
+                const originalIndex = data.findIndex(row => row === filteredData[parseInt(editIndex)]);
+                if (originalIndex !== -1) {
+                    data[originalIndex] = newRow;
+                }
+            } else {
+                data.push(newRow);
+            }
+            
+            saveToStorage();
+            closeModal();
+            filterTable();
+        }
+
+        // Modifier ligne
+        function editRow(index) {
+            openModal(index);
+        }
+
+        // Supprimer ligne
+        function deleteRow(index) {
+            if (!confirm('Supprimer cette ligne ?')) return;
+            
+            const originalIndex = data.findIndex(row => row === filteredData[index]);
+            if (originalIndex !== -1) {
+                data.splice(originalIndex, 1);
+                saveToStorage();
+                filterTable();
+            }
+        }
+
+        // Export Excel
+        function exportToExcel() {
+            const ws = XLSX.utils.json_to_sheet(filteredData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Avaries");
+            XLSX.writeFile(wb, `CEVA_Avaries_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        // Import Excel
+        function importFromExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const workbook = XLSX.read(e.target.result, {type: 'array'});
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+                    
+                    if (jsonData.length < 2) {
+                        alert('Le fichier est vide');
+                        return;
+                    }
+                    
+                    const headers = jsonData[0];
+                    const dateIndex = findColumn(headers, ['date']);
+                    const vinIndex = findColumn(headers, ['vin', 'chassis']);
+                    const modeleIndex = findColumn(headers, ['modele', 'model']);
+                    const respIndex = findColumn(headers, ['responsabilite', 'resp']);
+                    const statutIndex = findColumn(headers, ['statut', 'status']);
+                    const reparateurIndex = findColumn(headers, ['reparateur', 'garage']);
+                    const commentaireIndex = findColumn(headers, ['commentaire', 'comment']);
+                    
+                    if (vinIndex === -1) {
+                        alert('Colonne VIN introuvable');
+                        return;
+                    }
+                    
+                    if (!confirm(`Importer ${jsonData.length - 1} lignes ? (Cela écrasera les données existantes)`)) {
+                        return;
+                    }
+                    
+                    data = [];
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (!row[vinIndex]) continue;
+                        
+                        data.push({
+                            date: dateIndex !== -1 ? formatExcelDate(row[dateIndex]) : '',
+                            vin: String(row[vinIndex] || '').toUpperCase(),
+                            modele: String(row[modeleIndex] || '').toUpperCase(),
+                            responsabilite: String(row[respIndex] || ''),
+                            statut: String(row[statutIndex] || ''),
+                            reparateur: String(row[reparateurIndex] || ''),
+                            commentaire: String(row[commentaireIndex] || '')
+                        });
+                    }
+                    
+                    saveToStorage();
+                    filterTable();
+                    alert(`✅ ${data.length} lignes importées avec succès !`);
+                    
+                } catch (error) {
+                    alert('Erreur lors de l\'import : ' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = '';
+        }
+
+        function findColumn(headers, synonyms) {
+            for (let synonym of synonyms) {
+                const index = headers.findIndex(h => 
+                    String(h).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(synonym.toLowerCase())
+                );
+                if (index !== -1) return index;
+            }
+            return -1;
+        }
+
+        function formatExcelDate(value) {
+            if (!value) return '';
+            
+            if (typeof value === 'string' && value.match(/\d{2}\/\d{2}\/\d{4}/)) {
+                const [day, month, year] = value.split('/');
+                return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+            
+            if (typeof value === 'number') {
+                const date = new Date((value - 25569) * 86400 * 1000);
+                return date.toISOString().split('T')[0];
+            }
+            
+            return String(value);
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('modal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        loadFromStorage();
+    </script>
+</body>
+</html>
