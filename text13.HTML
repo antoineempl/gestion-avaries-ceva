@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion Avaries CEVA</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+        h1 { color: #003d7a; margin-bottom: 20px; }
+        
+        .filters { background: white; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        .filters input, .filters select { 
+            padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; 
+        }
+        .filters input { width: 300px; }
+        .filters select { min-width: 200px; }
+        
+        .btn { padding: 8px 15px; cursor: pointer; border: none; border-radius: 3px; margin-right: 5px; }
+        .btn-add { background: #28a745; color: white; }
+        .btn-edit { background: #ffc107; color: black; font-size: 12px; }
+        .btn-delete { background: #dc3545; color: white; font-size: 12px; }
+        .btn-delete-selected { background: #dc3545; color: white; font-weight: bold; }
+        .btn-save { background: #003d7a; color: white; }
+        .btn-export { background: #17a2b8; color: white; }
+        .btn-import { background: #6f42c1; color: white; }
+        .btn-sort { background: #6c757d; color: white; }
+        
+        table { width: 100%; background: white; border-collapse: collapse; table-layout: fixed; }
+        th { background: #003d7a; color: white; padding: 12px; text-align: left; cursor: pointer; }
+        th:hover { background: #002a5a; }
+        td { padding: 10px; border-bottom: 1px solid #ddd; font-size: 13px; word-wrap: break-word; }
+        tr:hover { background: #f9f9f9; }
+        tr.selected { background: #fff3cd; }
+        
+        /* Case à cocher */
+        .checkbox-cell { width: 40px !important; text-align: center; }
+        input[type="checkbox"] { cursor: pointer; transform: scale(1.2); }
+        
+        /* Largeurs des colonnes */
+        th:nth-child(2), td:nth-child(2) { width: 7%; }   /* Date */
+        th:nth-child(3), td:nth-child(3) { width: 10%; }  /* VIN */
+        th:nth-child(4), td:nth-child(4) { width: 6%; }   /* Modèle */
+        th:nth-child(5), td:nth-child(5) { width: 7%; }   /* Responsabilité */
+        th:nth-child(6), td:nth-child(6) { width: 16%; }  /* Statut */
+        th:nth-child(7), td:nth-child(7) { width: 8%; }   /* Élément */
+        th:nth-child(8), td:nth-child(8) { width: 8%; }   /* Dommage */
+        th:nth-child(9), td:nth-child(9) { width: 8%; }   /* Réserves */
+        th:nth-child(10), td:nth-child(10) { width: 8%; } /* Réparateur */
+        th:nth-child(11), td:nth-child(11) { width: 12%; }/* Commentaire */
+        th:nth-child(12), td:nth-child(12) { width: 10%; }/* Actions */
+        
+        .modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; 
+                 background: rgba(0,0,0,0.4); }
+        .modal-content { background: white; margin: 5% auto; padding: 30px; width: 80%; max-width: 800px; 
+                         border-radius: 5px; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .form-row { margin-bottom: 15px; }
+        .form-row label { display: inline-block; width: 150px; font-weight: bold; }
+        .form-row input, .form-row select, .form-row textarea { width: calc(100% - 160px); padding: 8px; 
+                                                                 border: 1px solid #ddd; border-radius: 3px; }
+        .form-row textarea { height: 80px; resize: vertical; }
+        
+        #counter { margin-bottom: 20px; font-weight: bold; color: #003d7a; }
+    </style>
+</head>
+<body>
+    <h1>📋 Gestion des Avaries - CEVA Logistics</h1>
+    
+    <div class="filters">
+        <input type="text" id="searchVIN" placeholder="🔍 Rechercher par VIN..." onkeyup="filterTable()">
+        
+        <select id="filterStatut" onchange="filterTable()">
+            <option value="">Tous les statuts</option>
+            <option value="DOSSIER _ Construction du dossier pour le SAV">DOSSIER _ Construction du dossier pour le SAV</option>
+            <option value="DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)">DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)</option>
+            <option value="DOSSIER _ En litige SEVATAS">DOSSIER _ En litige SEVATAS</option>
+            <option value="DOSSIER _ Attente accord Sevatas">DOSSIER _ Attente accord Sevatas</option>
+            <option value="TRANSPORT _transfert en attente > Garage réparateur">TRANSPORT _transfert en attente > Garage réparateur</option>
+            <option value="PIECE _ Pièce commandée > attente de reception">PIECE _ Pièce commandée > attente de reception</option>
+            <option value="REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER">REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER</option>
+            <option value="REPARATION _ En cours au garage réparateur >Ss date de fin de realignement">REPARATION _ En cours au garage réparateur >Ss date de fin de realignement</option>
+            <option value="REFORME B_ attente instructions RLT et/ou SEVATAS">REFORME B_ attente instructions RLT et/ou SEVATAS</option>
+            <option value="TERMINE _ En att de rapatriement sur centre">TERMINE _ En att de rapatriement sur centre</option>
+            <option value="TERMINE _ VIN réparé & blocage levé">TERMINE _ VIN réparé & blocage levé</option>
+            <option value="REFUS SEVATAS">REFUS SEVATAS</option>
+        </select>
+        
+        <select id="filterResponsabilite" onchange="filterTable()">
+            <option value="">Toutes responsabilités</option>
+            <option value="NAVIRE">NAVIRE</option>
+            <option value="EMPL">EMPL</option>
+            <option value="CEVA">CEVA</option>
+        </select>
+        
+        <button class="btn btn-sort" onclick="toggleDateSort()">
+            📅 Tri Date <span id="sortIndicator">↓</span>
+        </button>
+        
+        <button class="btn btn-add" onclick="openModal()">➕ Nouvelle Avarie</button>
+        <button class="btn btn-export" onclick="exportToCSV()">📥 Exporter CSV</button>
+        <button class="btn btn-import" onclick="document.getElementById('fileInput').click()">📤 Importer Excel</button>
+        <button class="btn btn-delete-selected" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none;">
+            🗑️ Supprimer la sélection (<span id="selectedCount">0</span>)
+        </button>
+        <input type="file" id="fileInput" accept=".csv,.xls,.xlsx" style="display:none" onchange="importFile(event)">
+    </div>
+    
+    <div id="counter">Total : <span id="totalCount">0</span> avaries | Affichées : <span id="displayedCount">0</span></div>
+    
+    <table id="avarieTable">
+        <thead>
+            <tr>
+                <th class="checkbox-cell">
+                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                </th>
+                <th onclick="sortTable(0)">📅 Date</th>
+                <th onclick="sortTable(1)">🚗 VIN</th>
+                <th onclick="sortTable(2)">🏷️ Modèle</th>
+                <th onclick="sortTable(3)">👤 Responsabilité</th>
+                <th onclick="sortTable(4)">📊 Statut</th>
+                <th onclick="sortTable(5)">🔧 Élément</th>
+                <th onclick="sortTable(6)">💥 Dommage</th>
+                <th onclick="sortTable(7)">⚠️ Réserves</th>
+                <th onclick="sortTable(8)">🛠️ Réparateur</th>
+                <th onclick="sortTable(9)">💬 Commentaire</th>
+                <th>⚙️ Actions</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+    </table>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Nouvelle Avarie</h2>
+            <form id="avarieForm">
+                <div class="form-row">
+                    <label>Date :</label>
+                    <input type="date" id="inputDate" required>
+                </div>
+                <div class="form-row">
+                    <label>VIN (Chassis) :</label>
+                    <input type="text" id="inputVIN" required maxlength="17" style="text-transform:uppercase">
+                </div>
+                <div class="form-row">
+                    <label>Modèle :</label>
+                    <input type="text" id="inputModele" style="text-transform:uppercase">
+                </div>
+                <div class="form-row">
+                    <label>Responsabilité :</label>
+                    <select id="inputResponsabilite">
+                        <option value="">-- Sélectionner --</option>
+                        <option value="NAVIRE">NAVIRE</option>
+                        <option value="EMPL">EMPL</option>
+                        <option value="CEVA">CEVA</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Statut :</label>
+                    <select id="inputStatut">
+                        <option value="DOSSIER _ Construction du dossier pour le SAV">DOSSIER _ Construction du dossier pour le SAV</option>
+                        <option value="DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)">DOSSIER _ Expertise en cours et/ou à réaliser > risque VNA (réforme)</option>
+                        <option value="DOSSIER _ En litige SEVATAS">DOSSIER _ En litige SEVATAS</option>
+                        <option value="DOSSIER _ Attente accord Sevatas">DOSSIER _ Attente accord Sevatas</option>
+                        <option value="TRANSPORT _transfert en attente > Garage réparateur">TRANSPORT _transfert en attente > Garage réparateur</option>
+                        <option value="PIECE _ Pièce commandée > attente de reception">PIECE _ Pièce commandée > attente de reception</option>
+                        <option value="REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER">REPARATION _ En cours sur centre CEVA >Attente réparation DENTMASTER</option>
+                        <option value="REPARATION _ En cours au garage réparateur >Ss date de fin de realignement">REPARATION _ En cours au garage réparateur >Ss date de fin de realignement</option>
+                        <option value="REFORME B_ attente instructions RLT et/ou SEVATAS">REFORME B_ attente instructions RLT et/ou SEVATAS</option>
+                        <option value="TERMINE _ En att de rapatriement sur centre">TERMINE _ En att de rapatriement sur centre</option>
+                        <option value="TERMINE _ VIN réparé & blocage levé">TERMINE _ VIN réparé & blocage levé</option>
+                        <option value="REFUS SEVATAS">REFUS SEVATAS</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Élément :</label>
+                    <input type="text" id="inputElement" style="text-transform:uppercase">
+                </div>
+                <div class="form-row">
+                    <label>Dommage :</label>
+                    <input type="text" id="inputDommage">
+                </div>
+                <div class="form-row">
+                    <label>Réserves :</label>
+                    <input type="text" id="inputReserves" style="text-transform:uppercase">
+                </div>
+                <div class="form-row">
+                    <label>Réparateur :</label>
+                    <input type="text" id="inputReparateur">
+                </div>
+                <div class="form-row">
+                    <label>Commentaire :</label>
+                    <textarea id="inputCommentaire"></textarea>
+                </div>
+                <button type="submit" class="btn btn-save">💾 Enregistrer</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let avaries = [];
+        let editIndex = -1;
+        let sortDateAsc = false;
+
+        // Charger depuis localStorage
+        function loadFromStorage() {
+            const saved = localStorage.getItem('avaries');
+            if (saved) {
+                avaries = JSON.parse(saved);
+                renderTable();
+            }
+        }
+
+        // Sauvegarder
+        function saveToStorage() {
+            localStorage.setItem('avaries', JSON.stringify(avaries));
+        }
+
+        // Afficher le tableau
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            let displayed = 0;
+            avaries.forEach((avarie, index) => {
+                const row = tbody.insertRow();
+                row.dataset.index = index;
+                
+                // Case à cocher
+                const checkCell = row.insertCell();
+                checkCell.className = 'checkbox-cell';
+                checkCell.innerHTML = `<input type="checkbox" class="row-checkbox" onchange="updateSelectionUI()">`;
+                
+                row.insertCell().textContent = avarie.date || '';
+                row.insertCell().textContent = avarie.vin || '';
+                row.insertCell().textContent = avarie.modele || '';
+                row.insertCell().textContent = avarie.responsabilite || '';
+                row.insertCell().textContent = avarie.statut || '';
+                row.insertCell().textContent = avarie.element || '';
+                row.insertCell().textContent = avarie.dommage || '';
+                row.insertCell().textContent = avarie.reserves || '';
+                row.insertCell().textContent = avarie.reparateur || '';
+                row.insertCell().textContent = avarie.commentaire || '';
+                
+                const actionsCell = row.insertCell();
+                actionsCell.innerHTML = `
+                    <button class="btn btn-edit" onclick="editAvarie(${index})">✏️</button>
+                    <button class="btn btn-delete" onclick="deleteAvarie(${index})">🗑️</button>
+                `;
+                
+                displayed++;
+            });
+            
+            document.getElementById('totalCount').textContent = avaries.length;
+            document.getElementById('displayedCount').textContent = displayed;
+            updateSelectionUI();
+        }
+
+        // Sélectionner/désélectionner toutes les lignes
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => {
+                // Ne sélectionner que les lignes visibles
+                if (cb.closest('tr').style.display !== 'none') {
+                    cb.checked = selectAll.checked;
+                    if (selectAll.checked) {
+                        cb.closest('tr').classList.add('selected');
+                    } else {
+                        cb.closest('tr').classList.remove('selected');
+                    }
+                }
+            });
+            updateSelectionUI();
+        }
+
+        // Mettre à jour l'interface de sélection
+        function updateSelectionUI() {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            const visibleCheckboxes = Array.from(checkboxes).filter(cb => cb.closest('tr').style.display !== 'none');
+            const checked = document.querySelectorAll('.row-checkbox:checked');
+            
+            // Mettre à jour le compteur
+            document.getElementById('selectedCount').textContent = checked.length;
+            
+            // Afficher/masquer le bouton de suppression
+            const deleteBtn = document.getElementById('deleteSelectedBtn');
+            deleteBtn.style.display = checked.length > 0 ? 'inline-block' : 'none';
+            
+            // Mettre à jour le statut de "Tout sélectionner"
+            const selectAll = document.getElementById('selectAll');
+            const visibleChecked = Array.from(checked).filter(cb => cb.closest('tr').style.display !== 'none');
+            selectAll.checked = (visibleCheckboxes.length > 0 && visibleChecked.length === visibleCheckboxes.length);
+            selectAll.indeterminate = (visibleChecked.length > 0 && visibleChecked.length < visibleCheckboxes.length);
+            
+            // Ajouter/retirer la classe selected sur les lignes
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    cb.closest('tr').classList.add('selected');
+                } else {
+                    cb.closest('tr').classList.remove('selected');
+                }
+            });
+        }
+
+        // Supprimer les lignes sélectionnées
+        function deleteSelected() {
+            const checked = document.querySelectorAll('.row-checkbox:checked');
+            if (checked.length === 0) return;
+            
+            const count = checked.length;
+            if (!confirm(`Supprimer ${count} avarie(s) sélectionnée(s) ?`)) return;
+            
+            // Récupérer les index à supprimer (du plus grand au plus petit)
+            const indexes = Array.from(checked)
+                .map(cb => parseInt(cb.closest('tr').dataset.index))
+                .sort((a, b) => b - a);
+            
+            // Supprimer les éléments
+            indexes.forEach(index => {
+                avaries.splice(index, 1);
+            });
+            
+            saveToStorage();
+            renderTable();
+            filterTable();
+            document.getElementById('selectAll').checked = false;
+        }
+
+        // Ouvrir le modal
+        function openModal() {
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('modalTitle').textContent = 'Nouvelle Avarie';
+            document.getElementById('avarieForm').reset();
+            document.getElementById('inputDate').valueAsDate = new Date();
+            editIndex = -1;
+        }
+
+        // Fermer le modal
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Soumettre le formulaire
+        document.getElementById('avarieForm').onsubmit = function(e) {
+            e.preventDefault();
+            
+            const avarie = {
+                date: document.getElementById('inputDate').value,
+                vin: document.getElementById('inputVIN').value.toUpperCase(),
+                modele: document.getElementById('inputModele').value.toUpperCase(),
+                responsabilite: document.getElementById('inputResponsabilite').value,
+                statut: document.getElementById('inputStatut').value,
+                element: document.getElementById('inputElement').value.toUpperCase(),
+                dommage: document.getElementById('inputDommage').value,
+                reserves: document.getElementById('inputReserves').value.toUpperCase(),
+                reparateur: document.getElementById('inputReparateur').value,
+                commentaire: document.getElementById('inputCommentaire').value
+            };
+            
+            if (editIndex === -1) {
+                avaries.push(avarie);
+            } else {
+                avaries[editIndex] = avarie;
+            }
+            
+            saveToStorage();
+            closeModal();
+            renderTable();
+            filterTable();
+        };
+
+        // Modifier une avarie
+        function editAvarie(index) {
+            editIndex = index;
+            const avarie = avaries[index];
+            
+            document.getElementById('inputDate').value = avarie.date;
+            document.getElementById('inputVIN').value = avarie.vin;
+            document.getElementById('inputModele').value = avarie.modele;
+            document.getElementById('inputResponsabilite').value = avarie.responsabilite;
+            document.getElementById('inputStatut').value = avarie.statut;
+            document.getElementById('inputElement').value = avarie.element;
+            document.getElementById('inputDommage').value = avarie.dommage;
+            document.getElementById('inputReserves').value = avarie.reserves;
+            document.getElementById('inputReparateur').value = avarie.reparateur;
+            document.getElementById('inputCommentaire').value = avarie.commentaire;
+            
+            document.getElementById('modalTitle').textContent = 'Modifier Avarie';
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        // Supprimer une avarie
+        function deleteAvarie(index) {
+            if (confirm('Supprimer cette avarie ?')) {
+                avaries.splice(index, 1);
+                saveToStorage();
+                renderTable();
+                filterTable();
+            }
+        }
+
+        // Filtrer le tableau
+        function filterTable() {
+            const searchVIN = document.getElementById('searchVIN').value.toUpperCase();
+            const filterStatut = document.getElementById('filterStatut').value;
+            const filterResp = document.getElementById('filterResponsabilite').value;
+            
+            const rows = document.getElementById('tableBody').rows;
+            let displayed = 0;
+            
+            for (let row of rows) {
+                const vin = row.cells[2].textContent;
+                const statut = row.cells[5].textContent;
+                const resp = row.cells[4].textContent;
+                
+                const matchVIN = vin.includes(searchVIN);
+                const matchStatut = !filterStatut || statut === filterStatut;
+                const matchResp = !filterResp || resp === filterResp;
+                
+                if (matchVIN && matchStatut && matchResp) {
+                    row.style.display = '';
+                    displayed++;
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+            
+            document.getElementById('displayedCount').textContent = displayed;
+            updateSelectionUI();
+        }
+
+        // Tri par date
+        function toggleDateSort() {
+            sortDateAsc = !sortDateAsc;
+            avaries.sort((a, b) => {
+                const dateA = new Date(a.date);
+                const dateB = new Date(b.date);
+                return sortDateAsc ? dateA - dateB : dateB - dateA;
+            });
+            document.getElementById('sortIndicator').textContent = sortDateAsc ? '↑' : '↓';
+            renderTable();
+            filterTable();
+        }
+
+        // Tri par colonne
+        function sortTable(colIndex) {
+            const realColIndex = colIndex + 1; // +1 car checkbox en première position
+            const rows = Array.from(document.getElementById('tableBody').rows);
+            
+            rows.sort((a, b) => {
+                const aText = a.cells[realColIndex].textContent;
+                const bText = b.cells[realColIndex].textContent;
+                return aText.localeCompare(bText);
+            });
+            
+            const tbody = document.getElementById('tableBody');
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Export CSV
+        function exportToCSV() {
+            const headers = ['Date', 'VIN', 'Modèle', 'Responsabilité', 'Statut', 'Élément', 'Dommage', 'Réserves', 'Réparateur', 'Commentaire'];
+            let csv = headers.join(';') + '\n';
+            
+            avaries.forEach(av => {
+                const row = [
+                    av.date, av.vin, av.modele, av.responsabilite, av.statut,
+                    av.element, av.dommage, av.reserves, av.reparateur,
+                    (av.commentaire || '').replace(/;/g, ',')
+                ];
+                csv += row.join(';') + '\n';
+            });
+            
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `avaries_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        // Import Excel
+        function importFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    if (jsonData.length < 2) {
+                        alert('Le fichier est vide ou mal formaté.');
+                        return;
+                    }
+                    
+                    const headers = jsonData[0];
+                    
+                    // Mapping flexible des colonnes
+                    const colMap = {
+                        date: findColumn(headers, ['date', 'date ouverture']),
+                        vin: findColumn(headers, ['chassis', 'vin', 'n°']),
+                        modele: findColumn(headers, ['modele', 'modèle']),
+                        responsabilite: findColumn(headers, ['responsabilite', 'responsabilité']),
+                        statut: findColumn(headers, ['statut', 'état', 'avancement']),
+                        element: findColumn(headers, ['element', 'élément', 'endommagé']),
+                        dommage: findColumn(headers, ['dommage', 'nature précise', 'typologie']),
+                        reserves: findColumn(headers, ['reserves', 'réserves', 'nature']),
+                        reparateur: findColumn(headers, ['reparateur', 'réparateur']),
+                        commentaire: findColumn(headers, ['commentaire', 'comment'])
+                    };
+                    
+                    if (colMap.date === -1 || colMap.vin === -1) {
+                        alert('Colonnes obligatoires manquantes : Date et VIN');
+                        return;
+                    }
+                    
+                    const mode = confirm('REMPLACER toutes les données ?\n\nOK = Remplacer tout\nAnnuler = Fusionner (ajouter uniquement les nouveaux VIN)');
+                    
+                    if (mode) {
+                        avaries = [];
+                    }
+                    
+                    let imported = 0;
+                    let skipped = 0;
+                    
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (!row || row.length === 0) continue;
+                        
+                        const vin = String(row[colMap.vin] || '').trim().toUpperCase();
+                        if (!vin) {
+                            skipped++;
+                            continue;
+                        }
+                        
+                        if (!mode && avaries.some(a => a.vin === vin)) {
+                            skipped++;
+                            continue;
+                        }
+                        
+                        avaries.push({
+                            date: formatExcelDate(row[colMap.date]),
+                            vin: vin,
+                            modele: String(row[colMap.modele] || '').toUpperCase(),
+                            responsabilite: String(row[colMap.responsabilite] || ''),
+                            statut: String(row[colMap.statut] || ''),
+                            element: String(row[colMap.element] || '').toUpperCase(),
+                            dommage: String(row[colMap.dommage] || ''),
+                            reserves: String(row[colMap.reserves] || '').toUpperCase(),
+                            reparateur: String(row[colMap.reparateur] || ''),
+                            commentaire: String(row[colMap.commentaire] || '')
+                        });
+                        imported++;
+                    }
+                    
+                    saveToStorage();
+                    renderTable();
+                    filterTable();
+                    alert(`Import terminé :\n✅ ${imported} lignes importées\n⏭️ ${skipped} lignes ignorées`);
+                    
+                } catch (error) {
+                    alert('Erreur lors de l\'import : ' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = '';
+        }
+
+        // Trouver une colonne par synonymes
+        function findColumn(headers, synonyms) {
+            for (let synonym of synonyms) {
+                const index = headers.findIndex(h => 
+                    String(h).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(synonym.toLowerCase())
+                );
+                if (index !== -1) return index;
+            }
+            return -1;
+        }
+
+        // Convertir date Excel
+        function formatExcelDate(value) {
+            if (!value) return '';
+            
+            if (typeof value === 'string' && value.match(/\d{2}\/\d{2}\/\d{4}/)) {
+                const [day, month, year] = value.split('/');
+                return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+            
+            if (typeof value === 'number') {
+                const date = new Date((value - 25569) * 86400 * 1000);
+                return date.toISOString().split('T')[0];
+            }
+            
+            return String(value);
+        }
+
+        // Fermer modal au clic extérieur
+        window.onclick = function(event) {
+            const modal = document.getElementById('modal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Charger au démarrage
+        loadFromStorage();
+    </script>
+</body>
+</html>
